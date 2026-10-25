@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+data/error.log
+data/notified.json
+data/widget_state.json
+data/*.tmp
