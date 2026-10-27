@@ -34,6 +34,78 @@ QWidget#processBox,
 QWidget#formBox {
     background: transparent;
 }
+QWidget#clickArea {
+    background: transparent;
+    border-radius: 8px;
+}
+QWidget#clickArea:hover {
+    background: #102419;
+}
+QFrame#dayColumn {
+    background: #08110c;
+    border: 1px solid #173222;
+    border-radius: 10px;
+}
+QFrame#todayColumn {
+    background: #0d2a17;
+    border: 2px solid #00FF41;
+    border-radius: 10px;
+}
+QLabel#dayName {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: #7d9a86;
+}
+QLabel#dayDate {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 15px;
+    font-weight: 700;
+    color: #d7ffe4;
+}
+QLabel#todayName,
+QLabel#todayDate {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-weight: 700;
+    color: #041208;
+    background: #00FF41;
+}
+QLabel#todayName {
+    font-size: 11px;
+    letter-spacing: 1px;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    padding-top: 4px;
+}
+QLabel#todayDate {
+    font-size: 15px;
+    padding-bottom: 4px;
+}
+QFrame#eventCard {
+    background: #0f1d14;
+    border: 1px solid #1f6b38;
+    border-radius: 7px;
+}
+QFrame#eventCardPast {
+    background: #0b130e;
+    border: 1px solid #173222;
+    border-radius: 7px;
+}
+QLabel#eventTime {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: #00FF41;
+}
+QLabel#eventTitle {
+    font-size: 12px;
+    color: #d7ffe4;
+}
+QLabel#eventPast {
+    font-size: 12px;
+    color: #4f6656;
+}
 QLabel#cell {
     font-family: Consolas, "Cascadia Mono", monospace;
     font-size: 12px;

@@ -103,6 +103,31 @@ class DragHeader(QWidget):
         super().mouseReleaseEvent(event)
 
 
+class ClickArea(QWidget):
+    clicked = pyqtSignal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setObjectName("clickArea")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Open this week's schedule")
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class StatRow(QWidget):
     def __init__(self, caption: str) -> None:
         super().__init__()
@@ -213,6 +238,7 @@ class Dashboard(QWidget):
     power_requested = pyqtSignal(str)
     quote_requested = pyqtSignal()
     process_end_requested = pyqtSignal(str)
+    week_requested = pyqtSignal()
     calendar_connect_requested = pyqtSignal(str)
     calendar_sync_requested = pyqtSignal()
     calendar_disconnect_requested = pyqtSignal()
@@ -275,7 +301,8 @@ class Dashboard(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         scroll.viewport().setAutoFillBackground(False)
-        scroll.viewport().setStyleSheet("background: transparent;")
+        scroll.viewport().setObjectName("scrollViewport")
+        scroll.viewport().setStyleSheet("QWidget#scrollViewport { background: transparent; }")
 
         content = QWidget()
         content.setObjectName("scrollBody")
@@ -387,7 +414,14 @@ class Dashboard(QWidget):
 
         body.addWidget(_hline())
         upcoming = QHBoxLayout()
-        upcoming.addWidget(_section("UPCOMING EVENTS"))
+        upcoming_header = ClickArea()
+        header_layout = QHBoxLayout(upcoming_header)
+        header_layout.setContentsMargins(4, 2, 8, 2)
+        upcoming_title = _section("UPCOMING EVENTS  ›  WEEK VIEW")
+        upcoming_title.setWordWrap(False)
+        header_layout.addWidget(upcoming_title)
+        upcoming_header.clicked.connect(self.week_requested.emit)
+        upcoming.addWidget(upcoming_header)
         upcoming.addStretch(1)
         quote_btn = QPushButton("Get Quote")
         quote_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -395,9 +429,12 @@ class Dashboard(QWidget):
         upcoming.addWidget(quote_btn)
         body.addLayout(upcoming)
 
-        self.event_layout = QVBoxLayout()
+        event_area = ClickArea()
+        event_area.clicked.connect(self.week_requested.emit)
+        self.event_layout = QVBoxLayout(event_area)
+        self.event_layout.setContentsMargins(4, 4, 4, 4)
         self.event_layout.setSpacing(4)
-        body.addLayout(self.event_layout)
+        body.addWidget(event_area)
 
         self.calendar_status = QLabel("")
         self.calendar_status.setObjectName("muted")

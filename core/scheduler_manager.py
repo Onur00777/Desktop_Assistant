@@ -96,7 +96,7 @@ def parse_ical(data: bytes, now: datetime | None = None, days: int = LOOKAHEAD_D
         calendar = icalendar.Calendar.from_ical(data)
     except Exception as exc:
         raise RuntimeError("The address did not return a valid calendar.") from exc
-    window = ((now - timedelta(days=1)).date(), (now + timedelta(days=days)).date())
+    window = ((now - timedelta(days=7)).date(), (now + timedelta(days=days)).date())
     events: list[dict] = []
     for component in recurring_ical_events.of(calendar).between(*window):
         if str(component.get("STATUS", "")).upper() == "CANCELLED":
@@ -289,6 +289,16 @@ class SchedulerManager(QObject):
                 items.append({**event, "start_dt": start})
         items.sort(key=lambda item: item["start_dt"])
         return items[:limit]
+
+    def week_events(self, week_start: date) -> dict[date, list[dict]]:
+        days = {week_start + timedelta(days=offset): [] for offset in range(7)}
+        for event in self.load_events():
+            start = parse_when(event.get("start"))
+            if start is not None and start.date() in days:
+                days[start.date()].append({**event, "start_dt": start})
+        for items in days.values():
+            items.sort(key=lambda item: (not item.get("all_day"), item["start_dt"]))
+        return days
 
     def poll_events(self) -> None:
         now = datetime.now()

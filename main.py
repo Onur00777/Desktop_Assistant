@@ -24,6 +24,7 @@ from core.workspace_manager import WorkspaceManager
 from ui.bot_icon import render_app_icon
 from ui.bubble import ALERT, EVENT, INFO, QUOTE, SpeechBubble
 from ui.dashboard import Dashboard
+from ui.week_view import WeekView
 from ui.styles import APP_QSS
 from ui.tray import AssistantTray
 from ui.widget import DesktopWidget
@@ -151,6 +152,8 @@ def main() -> int:
     bubble.bind(widget)
     dashboard = Dashboard(workspaces)
     dashboard.setWindowIcon(icon)
+    week_view = WeekView(scheduler.week_events)
+    week_view.setWindowIcon(icon)
     tray = AssistantTray(icon, workspaces)
 
     relay = PowerRelay()
@@ -181,14 +184,17 @@ def main() -> int:
             ticks[0] += 1
             refresh_view(refresh_power=dashboard.isVisible() and ticks[0] % 10 == 0)
             refresh_processes()
-            if dashboard.isVisible() and ticks[0] % 8 == 0:
+            if ticks[0] % 8 == 0:
                 refresh_calendar()
         except Exception:
             traceback.print_exc()
 
     def refresh_calendar() -> None:
-        dashboard.set_calendar_state(scheduler.calendar_connected, scheduler.calendar_status())
-        dashboard.set_events(scheduler.upcoming())
+        if dashboard.isVisible():
+            dashboard.set_calendar_state(scheduler.calendar_connected, scheduler.calendar_status())
+            dashboard.set_events(scheduler.upcoming())
+        if week_view.isVisible():
+            week_view.refresh()
 
     def connect_calendar(url: str) -> None:
         try:
@@ -304,6 +310,7 @@ def main() -> int:
         widget.hide()
         bubble.suspend()
         dashboard.hide()
+        week_view.hide()
         tray.set_widget_visible(False)
 
     def show_widget() -> None:
@@ -320,14 +327,14 @@ def main() -> int:
 
     def on_event(text: str) -> None:
         bubble.push(EVENT, text, 14000)
-        if dashboard.isVisible():
-            refresh_calendar()
+        refresh_calendar()
 
     def shutdown() -> None:
         widget.allow_close = True
         timer.stop()
         bubble.suspend()
         dashboard.hide()
+        week_view.hide()
         tray.hide()
         widget.hide()
         app.quit()
@@ -348,6 +355,7 @@ def main() -> int:
     dashboard.calendar_connect_requested.connect(connect_calendar)
     dashboard.calendar_sync_requested.connect(lambda: scheduler.sync(manual=True))
     dashboard.calendar_disconnect_requested.connect(disconnect_calendar)
+    dashboard.week_requested.connect(lambda: week_view.present(dashboard))
 
     relay.finished.connect(on_plan_finished)
     bubble.shown.connect(on_bubble_shown)
@@ -359,7 +367,7 @@ def main() -> int:
 
     scheduler.quote_ready.connect(lambda text, now: bubble.push(QUOTE, text, 12000, now=now))
     scheduler.event_alert.connect(on_event)
-    scheduler.events_changed.connect(lambda: refresh_calendar() if dashboard.isVisible() else None)
+    scheduler.events_changed.connect(refresh_calendar)
     scheduler.calendar_synced.connect(on_calendar_synced)
 
     timer = QTimer()
