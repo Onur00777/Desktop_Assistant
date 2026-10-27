@@ -1,22 +1,29 @@
-"""İkonun yanında duran konuşma balonu."""
+"""Speech bubble shown next to the desktop icon."""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer
+from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
 from ui.styles import ACCENT
 
+QUOTE = "QUOTE"
+INFO = "SYSTEM INFO"
+ALERT = "SYSTEM ALERT"
+EVENT = "EVENT"
+
 _KIND_COLORS = {
-    "SÖZ": "#00FF41",
-    "SİSTEM": "#ffb020",
-    "ETKİNLİK": "#8dffc1",
-    "BİLGİ": "#00FF41",
+    QUOTE: "#00FF41",
+    ALERT: "#ffb020",
+    EVENT: "#8dffc1",
+    INFO: "#00FF41",
 }
 
 
 class SpeechBubble(QWidget):
+    shown = pyqtSignal(str)
+
     def __init__(self) -> None:
         super().__init__()
         self._anchor: QWidget | None = None
@@ -46,7 +53,7 @@ class SpeechBubble(QWidget):
         self._layout.setContentsMargins(16, 12, 16, 24)
         self._layout.setSpacing(4)
 
-        self.kind_label = QLabel("BİLGİ")
+        self.kind_label = QLabel(INFO)
         kind_font = QFont("Consolas", 9)
         kind_font.setBold(True)
         self.kind_label.setFont(kind_font)
@@ -66,18 +73,24 @@ class SpeechBubble(QWidget):
     def bind(self, anchor: QWidget) -> None:
         self._anchor = anchor
 
-    def push(self, kind: str, text: str, timeout_ms: int = 11000) -> None:
+    def push(self, kind: str, text: str, timeout_ms: int = 11000, now: bool = False) -> None:
+        """Queue a message. With now=True it replaces whatever is on screen."""
         clean = " ".join(str(text).split())
         if not clean:
             return
         if len(clean) > 360:
             clean = clean[:357] + "..."
-        self._queue.append((kind, clean, timeout_ms))
+        if now:
+            self._queue.insert(0, (kind, clean, timeout_ms))
+        else:
+            self._queue.append((kind, clean, timeout_ms))
         if len(self._queue) > 6:
-            del self._queue[:-6]
-        if self._suspended or self.isVisible():
+            self._queue = self._queue[:6] if now else self._queue[-6:]
+        if self._suspended:
             return
-        self._show_next()
+        if now or not self.isVisible():
+            self._timer.stop()
+            self._show_next()
 
     def suspend(self) -> None:
         self._suspended = True
@@ -152,6 +165,7 @@ class SpeechBubble(QWidget):
         self.show()
         self.raise_()
         self._timer.start(max(2500, timeout))
+        self.shown.emit(kind)
 
     def _on_timeout(self) -> None:
         if self._suspended:

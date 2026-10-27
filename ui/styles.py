@@ -1,4 +1,4 @@
-"""Koyu terminal teması. Vurgu rengi neon yeşil."""
+"""Dark terminal theme with a neon green accent."""
 
 ACCENT = "#00FF41"
 
@@ -30,8 +30,34 @@ QWidget#scrollBody,
 QWidget#dragHeader,
 QWidget#statRow,
 QWidget#profileRow,
+QWidget#processBox,
 QWidget#formBox {
     background: transparent;
+}
+QLabel#cell {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 12px;
+    color: #d7ffe4;
+}
+QLabel#cellHead {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 10px;
+    color: #7d9a86;
+    letter-spacing: 1px;
+}
+QPushButton#endBtn {
+    color: #ff8d8d;
+    border-color: #5a2424;
+    padding: 2px 6px;
+    font-size: 12px;
+}
+QPushButton#endBtn:hover {
+    background: #3a1414;
+    color: #ffb4b4;
+}
+QPushButton#endBtn:disabled {
+    color: #3c4a40;
+    border-color: #1a2a20;
 }
 QLabel {
     background: transparent;

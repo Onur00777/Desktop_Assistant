@@ -1,4 +1,4 @@
-"""Kompakt kontrol paneli."""
+"""Compact control dashboard."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from PyQt6.QtGui import QColor, QKeySequence, QPainter, QShortcut
 from PyQt6.QtWidgets import (
     QApplication,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -16,12 +17,21 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from core.workspace_manager import WorkspaceManager
 from ui.styles import ACTIVE_BUTTON_QSS
+
+PROCESS_ROWS = 6
+IMPACT_COLORS = {
+    "Low": "#7d9a86",
+    "Medium": "#00FF41",
+    "High": "#ffb020",
+    "Very High": "#ff5a5a",
+}
 
 
 def _gb(num: float, digits: int = 1) -> str:
@@ -34,13 +44,14 @@ def _remaining(seconds: int | None) -> str:
     minutes = int(seconds) // 60
     hours, mins = divmod(minutes, 60)
     if hours:
-        return f"{hours} sa {mins} dk"
-    return f"{mins} dk"
+        return f"{hours}h {mins}m left"
+    return f"{mins}m left"
 
 
 def _section(text: str) -> QLabel:
     label = QLabel(text)
     label.setObjectName("section")
+    label.setWordWrap(True)
     return label
 
 
@@ -53,6 +64,13 @@ def _hline() -> QWidget:
 
 def _lines(editor: QPlainTextEdit) -> list[str]:
     return [line.strip() for line in editor.toPlainText().splitlines() if line.strip()]
+
+
+def _cell(text: str = "", name: str = "cell", align: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignRight) -> QLabel:
+    label = QLabel(text)
+    label.setObjectName(name)
+    label.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
+    return label
 
 
 class DragHeader(QWidget):
@@ -94,7 +112,7 @@ class StatRow(QWidget):
         layout.setSpacing(8)
         self.caption = QLabel(caption)
         self.caption.setObjectName("mono")
-        self.caption.setFixedWidth(48)
+        self.caption.setFixedWidth(64)
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
         self.bar.setTextVisible(False)
@@ -102,7 +120,7 @@ class StatRow(QWidget):
         self.value = QLabel("—")
         self.value.setObjectName("mono")
         self.value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        self.value.setMinimumWidth(136)
+        self.value.setMinimumWidth(150)
         layout.addWidget(self.caption)
         layout.addWidget(self.bar, 1)
         layout.addWidget(self.value)
@@ -144,21 +162,74 @@ class StatRow(QWidget):
         )
 
 
+class ProcessRow:
+    def __init__(self, grid: QGridLayout, row: int, on_end) -> None:
+        self.process = ""
+        self.impact = ""
+        self.name = _cell(name="cell", align=Qt.AlignmentFlag.AlignLeft)
+        self.name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.cpu = _cell()
+        self.ram = _cell()
+        self.power = _cell()
+        self.end = QPushButton("End")
+        self.end.setObjectName("endBtn")
+        self.end.setFixedWidth(52)
+        self.end.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.end.clicked.connect(lambda _checked=False: on_end(self.process))
+        for column, widget in enumerate((self.name, self.cpu, self.ram, self.power, self.end)):
+            grid.addWidget(widget, row, column)
+        self.set_visible(False)
+
+    def set_visible(self, visible: bool) -> None:
+        for widget in (self.name, self.cpu, self.ram, self.power, self.end):
+            widget.setVisible(visible)
+
+    def show_process(self, process: dict, armed: str) -> None:
+        name = str(process.get("name") or "")
+        count = int(process.get("count") or 1)
+        self.process = name
+        label = f"{name} ({count})" if count > 1 else name
+        width = max(60, self.name.width() - 4)
+        self.name.setText(self.name.fontMetrics().elidedText(label, Qt.TextElideMode.ElideRight, width))
+        self.name.setToolTip(label)
+        self.cpu.setText(f"{float(process.get('cpu') or 0):.1f}%")
+        self.ram.setText(f"{float(process.get('ram_mb') or 0):,.0f} MB / {float(process.get('ram_percent') or 0):.1f}%")
+        impact = str(process.get("impact") or "Low")
+        self.power.setText(impact)
+        if impact != self.impact:
+            self.impact = impact
+            self.power.setStyleSheet(f"color: {IMPACT_COLORS.get(impact, '#d7ffe4')};")
+        protected = bool(process.get("protected"))
+        self.end.setEnabled(not protected)
+        self.end.setText("Sure?" if armed == name and not protected else "End")
+        self.end.setToolTip("Protected process" if protected else f"End all {name} processes")
+        self.set_visible(True)
+
+
 class Dashboard(QWidget):
     launch_requested = pyqtSignal(str)
     delete_requested = pyqtSignal(str)
     profile_submitted = pyqtSignal(object)
     power_requested = pyqtSignal(str)
     quote_requested = pyqtSignal()
+    process_end_requested = pyqtSignal(str)
+    calendar_connect_requested = pyqtSignal(str)
+    calendar_sync_requested = pyqtSignal()
+    calendar_disconnect_requested = pyqtSignal()
 
     def __init__(self, workspaces: WorkspaceManager) -> None:
         super().__init__()
         self.workspaces = workspaces
         self._active_plan = ""
         self._plan_buttons: dict[str, QPushButton] = {}
+        self._armed_process = ""
+        self._last_processes: list[dict] = []
+        self._disarm_timer = QTimer(self)
+        self._disarm_timer.setSingleShot(True)
+        self._disarm_timer.timeout.connect(self._disarm_process)
 
         self.setObjectName("dashboardRoot")
-        self.setWindowTitle("Masaüstü Asistan")
+        self.setWindowTitle("Desktop Assistant")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
@@ -166,8 +237,8 @@ class Dashboard(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
-        self.setMinimumSize(420, 520)
-        self.resize(440, 640)
+        self.setMinimumSize(460, 520)
+        self.resize(480, 680)
         QShortcut(QKeySequence("Esc"), self).activated.connect(self.hide)
 
         outer = QVBoxLayout(self)
@@ -185,7 +256,7 @@ class Dashboard(QWidget):
         header = DragHeader(self)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        title = QLabel("MASAÜSTÜ ASİSTAN")
+        title = QLabel("DESKTOP ASSISTANT")
         title.setObjectName("title")
         title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         close_btn = QPushButton("×")
@@ -212,24 +283,24 @@ class Dashboard(QWidget):
         body.setContentsMargins(0, 0, 4, 0)
         body.setSpacing(8)
 
-        body.addWidget(_section("SİSTEM"))
+        body.addWidget(_section("SYSTEM TELEMETRY"))
         self.cpu_row = StatRow("CPU")
         self.ram_row = StatRow("RAM")
-        self.disk_row = StatRow("DİSK")
-        self.battery_row = StatRow("PİL")
+        self.disk_row = StatRow("DISK")
+        self.battery_row = StatRow("BATTERY")
         for row in (self.cpu_row, self.ram_row, self.disk_row, self.battery_row):
             body.addWidget(row)
 
-        self.plan_label = QLabel("Etkin plan: —")
+        self.plan_label = QLabel("Active Plan: —")
         self.plan_label.setObjectName("muted")
         body.addWidget(self.plan_label)
 
         plans = QHBoxLayout()
         plans.setSpacing(8)
         for plan_id, label, tip in (
-            ("saver", "Tasarruf", "Güç Tasarrufu"),
-            ("balanced", "Dengeli", "Dengeli"),
-            ("performance", "Performans", "Yüksek Performans"),
+            ("saver", "Power Saver", "Power Saver • brightness 35%"),
+            ("balanced", "Balanced", "Balanced • brightness 65%"),
+            ("performance", "Performance", "Performance • brightness 100%"),
         ):
             button = QPushButton(label)
             button.setToolTip(tip)
@@ -240,12 +311,40 @@ class Dashboard(QWidget):
         body.addLayout(plans)
         body.addWidget(_hline())
 
-        body.addWidget(_section("ÇALIŞMA ALANLARI"))
+        body.addWidget(_section("ACTIVE PROCESSES (TOP RESOURCE & POWER CONSUMERS)"))
+        process_box = QWidget()
+        process_box.setObjectName("processBox")
+        grid = QGridLayout(process_box)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(8)
+        grid.setVerticalSpacing(4)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnMinimumWidth(1, 46)
+        grid.setColumnMinimumWidth(2, 118)
+        grid.setColumnMinimumWidth(3, 66)
+        for column, (text, align) in enumerate(
+            (
+                ("PROCESS", Qt.AlignmentFlag.AlignLeft),
+                ("CPU", Qt.AlignmentFlag.AlignRight),
+                ("RAM (MB / %)", Qt.AlignmentFlag.AlignRight),
+                ("POWER", Qt.AlignmentFlag.AlignRight),
+                ("", Qt.AlignmentFlag.AlignRight),
+            )
+        ):
+            grid.addWidget(_cell(text, "cellHead", align), 0, column)
+        self.process_rows = [ProcessRow(grid, index + 1, self._on_end_clicked) for index in range(PROCESS_ROWS)]
+        body.addWidget(process_box)
+        self.process_hint = QLabel("Sampling processes…")
+        self.process_hint.setObjectName("muted")
+        body.addWidget(self.process_hint)
+        body.addWidget(_hline())
+
+        body.addWidget(_section("WORKSPACES"))
         self.profile_layout = QVBoxLayout()
         self.profile_layout.setSpacing(6)
         body.addLayout(self.profile_layout)
 
-        self.form_button = QPushButton("Yeni profil")
+        self.form_button = QPushButton("New Profile")
         self.form_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.form_button.clicked.connect(self._toggle_form)
         body.addWidget(self.form_button)
@@ -256,25 +355,25 @@ class Dashboard(QWidget):
         form_layout.setContentsMargins(0, 0, 0, 0)
         form_layout.setSpacing(6)
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("Profil adı  ·  örn. Kodlama")
-        self.apps_edit = self._editor("Her satıra bir uygulama\nörn. code")
-        self.folders_edit = self._editor("Her satıra bir klasör yolu")
+        self.name_edit.setPlaceholderText("Profile name  •  e.g. Coding")
+        self.apps_edit = self._editor("One app per line\ne.g. code")
+        self.folders_edit = self._editor("One folder path per line")
         self.urls_edit = self._editor("https://github.com")
         self.kill_edit = self._editor("Spotify.exe")
         self.feedback = QLabel("")
         self.feedback.setObjectName("muted")
         self.feedback.setWordWrap(True)
-        save = QPushButton("Kaydet")
+        save = QPushButton("Save Profile")
         save.setCursor(Qt.CursorShape.PointingHandCursor)
         save.setProperty("active", True)
         save.clicked.connect(self._submit)
         self.name_edit.returnPressed.connect(self._submit)
         form_layout.addWidget(self.name_edit)
         for caption, editor in (
-            ("Uygulamalar", self.apps_edit),
-            ("Klasörler", self.folders_edit),
-            ("Siteler", self.urls_edit),
-            ("Kapatılacak işlemler", self.kill_edit),
+            ("Apps", self.apps_edit),
+            ("Folders", self.folders_edit),
+            ("Websites", self.urls_edit),
+            ("Processes to close", self.kill_edit),
         ):
             label = QLabel(caption)
             label.setObjectName("muted")
@@ -288,9 +387,9 @@ class Dashboard(QWidget):
 
         body.addWidget(_hline())
         upcoming = QHBoxLayout()
-        upcoming.addWidget(_section("YAKLAŞAN"))
+        upcoming.addWidget(_section("UPCOMING EVENTS"))
         upcoming.addStretch(1)
-        quote_btn = QPushButton("Söz getir")
+        quote_btn = QPushButton("Get Quote")
         quote_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         quote_btn.clicked.connect(self.quote_requested.emit)
         upcoming.addWidget(quote_btn)
@@ -299,10 +398,55 @@ class Dashboard(QWidget):
         self.event_layout = QVBoxLayout()
         self.event_layout.setSpacing(4)
         body.addLayout(self.event_layout)
-        hint = QLabel("Etkinlikler data/events.json dosyasından okunur.")
-        hint.setObjectName("muted")
-        hint.setWordWrap(True)
-        body.addWidget(hint)
+
+        self.calendar_status = QLabel("")
+        self.calendar_status.setObjectName("muted")
+        self.calendar_status.setWordWrap(True)
+        body.addWidget(self.calendar_status)
+
+        self.calendar_connect_box = QWidget()
+        self.calendar_connect_box.setObjectName("formBox")
+        connect_layout = QVBoxLayout(self.calendar_connect_box)
+        connect_layout.setContentsMargins(0, 0, 0, 0)
+        connect_layout.setSpacing(6)
+        connect_hint = QLabel(
+            "Google Calendar → Settings → your calendar → Integrate calendar → "
+            "copy “Secret address in iCal format” and paste it here."
+        )
+        connect_hint.setObjectName("muted")
+        connect_hint.setWordWrap(True)
+        connect_row = QHBoxLayout()
+        connect_row.setSpacing(6)
+        self.calendar_url_edit = QLineEdit()
+        self.calendar_url_edit.setPlaceholderText("https://calendar.google.com/calendar/ical/…/basic.ics")
+        self.calendar_url_edit.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+        self.calendar_url_edit.returnPressed.connect(self._submit_calendar)
+        connect_btn = QPushButton("Connect")
+        connect_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        connect_btn.clicked.connect(self._submit_calendar)
+        connect_row.addWidget(self.calendar_url_edit, 1)
+        connect_row.addWidget(connect_btn)
+        connect_layout.addWidget(connect_hint)
+        connect_layout.addLayout(connect_row)
+        body.addWidget(self.calendar_connect_box)
+
+        self.calendar_manage_box = QWidget()
+        self.calendar_manage_box.setObjectName("formBox")
+        manage_row = QHBoxLayout(self.calendar_manage_box)
+        manage_row.setContentsMargins(0, 0, 0, 0)
+        manage_row.setSpacing(6)
+        sync_btn = QPushButton("Sync Now")
+        sync_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        sync_btn.clicked.connect(self.calendar_sync_requested.emit)
+        disconnect_btn = QPushButton("Disconnect")
+        disconnect_btn.setObjectName("danger")
+        disconnect_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        disconnect_btn.clicked.connect(self.calendar_disconnect_requested.emit)
+        manage_row.addStretch(1)
+        manage_row.addWidget(sync_btn)
+        manage_row.addWidget(disconnect_btn)
+        body.addWidget(self.calendar_manage_box)
+        self.set_calendar_state(False, "Google Calendar is not connected.")
         body.addStretch(1)
 
         scroll.setWidget(content)
@@ -333,8 +477,8 @@ class Dashboard(QWidget):
             screen = anchor.screen() or QApplication.primaryScreen()
         if screen is not None:
             avail = screen.availableGeometry()
-            height = min(660, max(520, avail.height() - 32))
-            self.resize(440, height)
+            height = min(720, max(520, avail.height() - 32))
+            self.resize(480, height)
             anchor_rect = anchor.frameGeometry()
             x = anchor_rect.left() - self.width() - 14
             if x < avail.left():
@@ -352,55 +496,85 @@ class Dashboard(QWidget):
         memory = stats.get("memory") or {}
         disk = stats.get("disk") or {}
         battery = stats.get("battery")
-        self.cpu_row.set_reading(cpu, f"%{cpu:.0f}")
+        self.cpu_row.set_reading(cpu, f"{cpu:.0f}%")
         used = float(memory.get("used") or 0)
         total = float(memory.get("total") or 0)
-        ram_text = f"{_gb(used)}/{_gb(total, 0)} GB" if total else "—"
+        ram_text = f"{_gb(used)} / {_gb(total, 0)} GB" if total else "—"
         self.ram_row.set_reading(float(memory.get("percent") or 0), ram_text)
         free = float(disk.get("free") or 0)
-        disk_text = f"{_gb(free, 0)} GB boş" if disk else "—"
+        disk_text = f"{_gb(free, 0)} GB free" if disk else "—"
         self.disk_row.set_reading(float(disk.get("percent") or 0), disk_text)
         if not isinstance(battery, dict):
-            self.battery_row.set_empty("yok")
+            self.battery_row.set_empty("n/a")
         else:
             percent = float(battery.get("percent") or 0)
             if battery.get("plugged"):
-                text = f"%{percent:.0f} AC"
+                text = f"{percent:.0f}% • plugged in"
             else:
                 left = _remaining(battery.get("secs_left"))
-                text = f"%{percent:.0f}" + (f" · {left}" if left else "")
+                text = f"{percent:.0f}%" + (f" • {left}" if left else "")
             self.battery_row.set_reading(percent, text, low_is_bad=True)
 
         plan = stats.get("power_plan")
         if not isinstance(plan, dict):
             return
-        self.plan_label.setText(f"Etkin plan: {plan.get('label') or '—'}")
+        self.plan_label.setText(f"Active Plan: {plan.get('label') or '—'}")
         plan_id = str(plan.get("id") or "")
         if plan_id != self._active_plan:
             self._active_plan = plan_id
             for key, button in self._plan_buttons.items():
                 self._restyle(button, active=key == plan_id)
 
+    def set_processes(self, processes: list[dict]) -> None:
+        self._last_processes = processes
+        for index, row in enumerate(self.process_rows):
+            if index < len(processes):
+                row.show_process(processes[index], self._armed_process)
+            else:
+                row.set_visible(False)
+        if not processes:
+            self.process_hint.setText("No process data available.")
+        else:
+            self.process_hint.setText("Grouped by name • Power is estimated from CPU and RAM load.")
+
+    def set_calendar_state(self, connected: bool, status: str) -> None:
+        self.calendar_status.setText(status)
+        self.calendar_connect_box.setVisible(not connected)
+        self.calendar_manage_box.setVisible(connected)
+        if connected:
+            self.calendar_url_edit.clear()
+
+    def _submit_calendar(self) -> None:
+        url = self.calendar_url_edit.text().strip()
+        if not url:
+            self.calendar_status.setText("Paste your secret iCal address first.")
+            return
+        self.calendar_connect_requested.emit(url)
+
     def set_events(self, events: list[dict]) -> None:
         self._clear(self.event_layout)
         if not events:
-            empty = QLabel("Yaklaşan etkinlik yok.")
+            empty = QLabel("No upcoming events.")
             empty.setObjectName("muted")
             self.event_layout.addWidget(empty)
             return
         now = datetime.now()
         for event in events:
             start = event.get("start_dt")
-            title = str(event.get("title") or "Etkinlik")
-            if isinstance(start, datetime):
-                when = start.strftime("%d.%m %H:%M")
+            title = str(event.get("title") or "Event")
+            if isinstance(start, datetime) and event.get("all_day"):
+                days = (start.date() - now.date()).days
+                extra = " • today" if days == 0 else " • tomorrow" if days == 1 else ""
+                text = f"{start.strftime('%d %b')} all day{extra}   {title}"
+            elif isinstance(start, datetime):
+                when = start.strftime("%d %b %H:%M")
                 mins = int((start - now).total_seconds() // 60)
                 if mins < 0:
-                    extra = " · şimdi"
+                    extra = " • now"
                 elif mins < 60:
-                    extra = f" · {mins} dk"
+                    extra = f" • in {mins} min"
                 elif mins < 60 * 36:
-                    extra = f" · {mins // 60} sa"
+                    extra = f" • in {mins // 60} h"
                 else:
                     extra = ""
                 text = f"{when}{extra}   {title}"
@@ -419,7 +593,7 @@ class Dashboard(QWidget):
             self.show_feedback(str(exc))
             return
         if not profiles:
-            empty = QLabel("Henüz profil yok.")
+            empty = QLabel("No profiles yet.")
             empty.setObjectName("muted")
             self.profile_layout.addWidget(empty)
             return
@@ -433,12 +607,28 @@ class Dashboard(QWidget):
         self.name_edit.clear()
         for editor in (self.apps_edit, self.folders_edit, self.urls_edit, self.kill_edit):
             editor.clear()
-        self.feedback.setText("Kaydedildi.")
+        self.feedback.setText("Saved.")
+
+    def _on_end_clicked(self, name: str) -> None:
+        if not name:
+            return
+        if self._armed_process != name:
+            self._armed_process = name
+            self._disarm_timer.start(3000)
+            self.set_processes(self._last_processes)
+            return
+        self._disarm_process()
+        self.process_end_requested.emit(name)
+
+    def _disarm_process(self) -> None:
+        self._disarm_timer.stop()
+        self._armed_process = ""
+        self.set_processes(self._last_processes)
 
     def _toggle_form(self) -> None:
         visible = not self.form.isVisible()
         self.form.setVisible(visible)
-        self.form_button.setText("Formu kapat" if visible else "Yeni profil")
+        self.form_button.setText("Close Form" if visible else "New Profile")
         if visible:
             self.name_edit.setFocus()
 
@@ -452,10 +642,10 @@ class Dashboard(QWidget):
             "kill": _lines(self.kill_edit),
         }
         if not name:
-            self.show_feedback("Profil adı gerekli.")
+            self.show_feedback("Profile name is required.")
             return
         if not any(profile[key] for key in ("apps", "folders", "urls", "kill")):
-            self.show_feedback("En az bir uygulama, klasör, site veya işlem gir.")
+            self.show_feedback("Enter at least one app, folder, website or process.")
             return
         self.profile_submitted.emit(profile)
 
@@ -471,22 +661,22 @@ class Dashboard(QWidget):
         label.setWordWrap(True)
         tips: list[str] = []
         for key, title in (
-            ("apps", "Uygulama"),
-            ("folders", "Klasör"),
-            ("urls", "Site"),
-            ("kill", "Kapat"),
+            ("apps", "Apps"),
+            ("folders", "Folders"),
+            ("urls", "Websites"),
+            ("kill", "Close"),
         ):
             values = profile.get(key) or []
             if values:
                 tips.append(f"{title}: {', '.join(str(value) for value in values)}")
         row.setToolTip("\n".join(tips) if tips else name)
-        open_btn = QPushButton("Aç")
-        open_btn.setFixedWidth(52)
+        open_btn = QPushButton("Launch")
+        open_btn.setFixedWidth(72)
         open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         open_btn.clicked.connect(lambda _checked=False, profile_name=name: self.launch_requested.emit(profile_name))
-        delete_btn = QPushButton("Sil")
+        delete_btn = QPushButton("Delete")
         delete_btn.setObjectName("danger")
-        delete_btn.setFixedWidth(58)
+        delete_btn.setFixedWidth(72)
         delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         delete_btn.clicked.connect(
             lambda _checked=False, profile_name=name, button=delete_btn: self._confirm_delete(profile_name, button)
@@ -499,7 +689,7 @@ class Dashboard(QWidget):
     def _confirm_delete(self, name: str, button: QPushButton) -> None:
         if button.property("armed") != name:
             button.setProperty("armed", name)
-            button.setText("Emin?")
+            button.setText("Sure?")
             QTimer.singleShot(2500, lambda b=button, profile_name=name: self._disarm(b, profile_name))
             return
         self.delete_requested.emit(name)
@@ -508,7 +698,7 @@ class Dashboard(QWidget):
         try:
             if button.property("armed") == name:
                 button.setProperty("armed", None)
-                button.setText("Sil")
+                button.setText("Delete")
         except RuntimeError:
             return
 

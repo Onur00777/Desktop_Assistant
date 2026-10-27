@@ -1,4 +1,4 @@
-"""Çalışma alanı profilleri: uygulama, klasör, site ve arka plan işlemi."""
+"""Workspace profiles: apps, folders, websites and background processes to close."""
 
 from __future__ import annotations
 
@@ -10,38 +10,9 @@ from pathlib import Path
 
 import psutil
 
+from core.system_manager import is_protected_process
+
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-_BLOCKED = {
-    "system",
-    "registry",
-    "csrss.exe",
-    "lsass.exe",
-    "winlogon.exe",
-    "services.exe",
-    "smss.exe",
-    "wininit.exe",
-    "svchost.exe",
-    "explorer.exe",
-    "dwm.exe",
-    "fontdrvhost.exe",
-    "sihost.exe",
-    "taskhostw.exe",
-    "runtimebroker.exe",
-    "searchhost.exe",
-    "startmenuexperiencehost.exe",
-    "textinputhost.exe",
-    "securityhealthservice.exe",
-    "msmpeng.exe",
-    "csrss",
-    "lsass",
-    "winlogon",
-    "services",
-    "smss",
-    "wininit",
-    "svchost",
-    "explorer",
-    "dwm",
-}
 
 
 def _clean_list(value: object) -> list[str]:
@@ -58,12 +29,12 @@ def _read_json(path: Path) -> dict:
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"workspaces.json okunamadı: {exc}") from exc
+        raise ValueError(f"Could not read workspaces.json: {exc}") from exc
     if not isinstance(data, dict):
-        raise ValueError("workspaces.json bir nesne olmalı.")
+        raise ValueError("workspaces.json must contain an object.")
     profiles = data.get("profiles", [])
     if not isinstance(profiles, list):
-        raise ValueError("profiles alanı bir liste olmalı.")
+        raise ValueError("The profiles field must be a list.")
     data["profiles"] = profiles
     return data
 
@@ -73,15 +44,6 @@ def _write_json(path: Path, data: dict) -> None:
     temporary = path.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
-
-
-def _blocked(name: str) -> bool:
-    key = name.strip().lower()
-    if key in _BLOCKED:
-        return True
-    if not key.endswith(".exe") and f"{key}.exe" in _BLOCKED:
-        return True
-    return False
 
 
 def _same_process(proc_name: str, target: str) -> bool:
@@ -117,10 +79,10 @@ class WorkspaceManager:
     def add_profile(self, profile: dict) -> None:
         name = str(profile.get("name") or "").strip()
         if not name:
-            raise ValueError("Profil adı gerekli.")
+            raise ValueError("Profile name is required.")
         data = self._load()
         if any(str(item.get("name") or "").strip().casefold() == name.casefold() for item in data["profiles"] if isinstance(item, dict)):
-            raise ValueError(f"Bu isimde bir profil zaten var: {name}")
+            raise ValueError(f"A profile with this name already exists: {name}")
         data["profiles"].append(
             {
                 "name": name,
@@ -148,7 +110,7 @@ class WorkspaceManager:
     def activate(self, name: str) -> dict[str, list[str]]:
         profile = next((item for item in self.list_profiles() if item["name"] == name), None)
         if profile is None:
-            raise ValueError(f"Profil yok: {name}")
+            raise ValueError(f"Profile not found: {name}")
         launched: list[str] = []
         errors: list[str] = []
         for app in profile["apps"]:
@@ -182,7 +144,7 @@ class WorkspaceManager:
 def _launch_app(target: str) -> None:
     command = target.strip().strip('"')
     if not command:
-        raise ValueError("boş uygulama")
+        raise ValueError("empty app entry")
     path = Path(command)
     if path.exists():
         if os.name == "nt":
@@ -204,7 +166,7 @@ def _launch_app(target: str) -> None:
 def _launch_folder(folder: str) -> None:
     path = Path(folder.strip().strip('"'))
     if not path.exists():
-        raise FileNotFoundError(f"klasör yok: {path}")
+        raise FileNotFoundError(f"folder not found: {path}")
     if os.name == "nt":
         os.startfile(path)  # type: ignore[attr-defined]
         return
@@ -216,7 +178,7 @@ def _launch_url(url: str) -> None:
     if not target.startswith(("http://", "https://")):
         target = "https://" + target
     if not webbrowser.open(target):
-        raise RuntimeError(f"tarayıcı açılmadı: {target}")
+        raise RuntimeError(f"browser did not open: {target}")
 
 
 def _close_processes(names: list[str]) -> tuple[list[str], list[str]]:
@@ -224,8 +186,8 @@ def _close_processes(names: list[str]) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     targets: list[str] = []
     for name in names:
-        if _blocked(name):
-            errors.append(f"sistem işlemi korunuyor: {name}")
+        if is_protected_process(name):
+            errors.append(f"protected system process: {name}")
             continue
         targets.append(name)
     if not targets:

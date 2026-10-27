@@ -1,1 +1,1 @@
-"""Sistem, çalışma alanı ve zamanlayıcı."""
+"""System, workspace and scheduler services."""

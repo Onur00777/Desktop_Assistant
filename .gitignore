@@ -3,4 +3,6 @@ __pycache__/
 data/error.log
 data/notified.json
 data/widget_state.json
+data/calendar.json
+data/calendar_cache.json
 data/*.tmp

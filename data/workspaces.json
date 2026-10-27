@@ -1,21 +1,21 @@
 {
   "profiles": [
     {
-      "name": "Kodlama Modu",
+      "name": "Coding Mode",
       "apps": ["code"],
       "folders": [],
       "urls": ["https://github.com"],
       "kill": []
     },
     {
-      "name": "Ders Modu",
+      "name": "Study Mode",
       "apps": ["notepad"],
       "folders": [],
       "urls": ["https://calendar.google.com"],
       "kill": ["Spotify.exe"]
     },
     {
-      "name": "Oyun / Müzik Modu",
+      "name": "Gaming / Music Mode",
       "apps": ["spotify"],
       "folders": [],
       "urls": [],

@@ -1,4 +1,4 @@
-"""Sistem tepsisi menüsü."""
+"""System tray menu."""
 
 from __future__ import annotations
 
@@ -19,34 +19,34 @@ class AssistantTray(QSystemTrayIcon):
         super().__init__(icon)
         self.workspaces = workspaces
         self.available = QSystemTrayIcon.isSystemTrayAvailable()
-        self.setToolTip("Masaüstü Asistan")
+        self.setToolTip("Desktop Assistant")
 
         self.menu = QMenu()
-        self.toggle_widget_action = self.menu.addAction("İkonu gizle")
+        self.toggle_widget_action = self.menu.addAction("Hide Icon")
         self.toggle_widget_action.triggered.connect(self.toggle_widget_requested.emit)
-        dashboard_action = self.menu.addAction("Kontrol paneli")
+        dashboard_action = self.menu.addAction("Dashboard")
         dashboard_action.triggered.connect(self.toggle_dashboard_requested.emit)
-        self.workspace_menu = self.menu.addMenu("Çalışma alanları")
+        self.workspace_menu = self.menu.addMenu("Workspaces")
         self.workspace_menu.aboutToShow.connect(self.rebuild_workspaces)
         self.menu.addSeparator()
-        quit_action = self.menu.addAction("Çıkış")
+        quit_action = self.menu.addAction("Quit")
         quit_action.triggered.connect(self.quit_requested.emit)
         self.setContextMenu(self.menu)
         self.activated.connect(self._on_activated)
 
     def set_widget_visible(self, visible: bool) -> None:
-        self.toggle_widget_action.setText("İkonu gizle" if visible else "İkonu göster")
+        self.toggle_widget_action.setText("Hide Icon" if visible else "Show Icon")
 
     def rebuild_workspaces(self) -> None:
         self.workspace_menu.clear()
         try:
             profiles = self.workspaces.list_profiles()
         except ValueError:
-            action = self.workspace_menu.addAction("Liste okunamadı")
+            action = self.workspace_menu.addAction("Could not read profiles")
             action.setEnabled(False)
             return
         if not profiles:
-            action = self.workspace_menu.addAction("Profil yok")
+            action = self.workspace_menu.addAction("No profiles")
             action.setEnabled(False)
             return
         for profile in profiles:

@@ -1,1 +1,1 @@
-"""Masaüstü ikonu, konuşma balonu, panel ve tepsi."""
+"""Desktop icon, speech bubble, dashboard and tray."""
