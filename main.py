@@ -16,7 +16,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtNetwork import QLocalServer, QLocalSocket
-from PyQt6.QtWidgets import QApplication, QMessageBox, QWidget
+from PyQt6.QtWidgets import QApplication, QWidget
 
 from core.scheduler_manager import SchedulerManager
 from core.system_manager import PLANS, SystemManager
@@ -91,6 +91,7 @@ def _clamp(window: QWidget) -> None:
 
 
 def _acquire_instance() -> tuple[bool, QLocalServer | None]:
+    """Connecting to a running instance is also the signal for it to come to the front."""
     socket = QLocalSocket()
     socket.connectToServer(_INSTANCE)
     if socket.waitForConnected(250):
@@ -136,7 +137,6 @@ def main() -> int:
 
     busy, server = _acquire_instance()
     if busy:
-        QMessageBox.information(None, "Desktop Assistant", "The assistant is already running.")
         return 0
     app._instance_server = server  # type: ignore[attr-defined]
 
@@ -329,6 +329,15 @@ def main() -> int:
         bubble.push(EVENT, text, 14000)
         refresh_calendar()
 
+    def on_second_launch() -> None:
+        while server is not None and server.hasPendingConnections():
+            server.nextPendingConnection().close()
+        show_widget()
+        if not dashboard.isVisible():
+            open_dashboard()
+        dashboard.raise_()
+        dashboard.activateWindow()
+
     def shutdown() -> None:
         widget.allow_close = True
         timer.stop()
@@ -338,6 +347,9 @@ def main() -> int:
         tray.hide()
         widget.hide()
         app.quit()
+
+    if server is not None:
+        server.newConnection.connect(on_second_launch)
 
     widget.clicked.connect(toggle_dashboard)
     widget.open_requested.connect(open_dashboard)
