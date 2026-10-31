@@ -1,8 +1,8 @@
 # Desktop_Assistant
 
-A low-footprint desktop assistant written in Python and PyQt6.
+A desktop assistant written in Python and PyQt6.
 
-A draggable robot icon lives on the desktop with a speech bubble, a system tray menu and a compact dashboard. The dashboard shows CPU, RAM, disk and battery telemetry, the top resource and power consumers (with an End button), Windows power plans with matching screen brightness (Power Saver 35%, Balanced 65%, Performance 100%), one-click workspace profiles from `data/workspaces.json`, quotes and Google Calendar reminders. The robot smiles after successful actions.
+A draggable robot icon residing on the desktop with a speech bubble, a system tray menu and a compact dashboard. The dashboard shows CPU, RAM, disk and battery telemetry, the top resource and power consumers (with an End button), Windows power plans with matching screen brightness (Power Saver 35%, Balanced 65%, Performance 100%), one-click workspace profiles from `data/workspaces.json`, quotes and Google Calendar reminders. The robot smiles after successful actions.
 
 ## Google Calendar
 
