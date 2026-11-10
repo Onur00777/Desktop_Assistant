@@ -37,6 +37,7 @@ _INSTANCE = "MasaustuAsistan.single"
 
 class PowerRelay(QObject):
     finished = pyqtSignal(str, bool, str)
+    battery_capacity_ready = pyqtSignal(object)
 
 
 def _set_windows_app_id() -> None:
@@ -158,6 +159,7 @@ def main() -> int:
 
     relay = PowerRelay()
     power_state = {"busy": False, "pending": ""}
+    reading_capacity = False
     ticks = [0]
 
     def smile() -> None:
@@ -211,7 +213,13 @@ def main() -> int:
         if manual:
             bubble.push(INFO if ok else ALERT, message if ok else f"Calendar sync failed • {message}", 9000, now=True)
 
+    def on_battery_capacity_ready(capacity: tuple[int, int] | None) -> None:
+        nonlocal reading_capacity
+        reading_capacity = False
+        dashboard.set_battery_capacity(capacity)
+
     def open_dashboard() -> None:
+        nonlocal reading_capacity
         try:
             refresh_calendar()
             dashboard.set_stats(system.snapshot(refresh_power=True))
@@ -220,6 +228,13 @@ def main() -> int:
             traceback.print_exc()
         dashboard.present_near(widget)
         QTimer.singleShot(700, refresh_processes)
+        if not reading_capacity:
+            reading_capacity = True
+
+            def read_capacity() -> None:
+                relay.battery_capacity_ready.emit(system.battery_capacity())
+
+            threading.Thread(target=read_capacity, name="battery-capacity", daemon=True).start()
 
     def toggle_dashboard() -> None:
         if dashboard.isVisible():
@@ -370,6 +385,7 @@ def main() -> int:
     dashboard.week_requested.connect(lambda: week_view.present(dashboard))
 
     relay.finished.connect(on_plan_finished)
+    relay.battery_capacity_ready.connect(on_battery_capacity_ready)
     bubble.shown.connect(on_bubble_shown)
 
     tray.toggle_widget_requested.connect(toggle_widget)

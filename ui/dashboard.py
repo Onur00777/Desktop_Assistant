@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from core.system_manager import PLANS, SAVER_CPU_MAX, SAVER_DISPLAY_MINUTES, SAVER_SLEEP_MINUTES
 from core.workspace_manager import WorkspaceManager
 from ui.styles import ACTIVE_BUTTON_QSS
 
@@ -318,18 +319,35 @@ class Dashboard(QWidget):
         for row in (self.cpu_row, self.ram_row, self.disk_row, self.battery_row):
             body.addWidget(row)
 
+        self.battery_health = QLabel("Battery health —")
+        self.battery_health.setObjectName("muted")
+        self.battery_health.setToolTip("Estimated from full-charge capacity divided by design capacity.")
+        health_row = QHBoxLayout()
+        health_row.addWidget(self.battery_health, 1)
+        charge_help = QLabel(
+            '<a href="https://support.microsoft.com/en-us/windows/experience/power-battery/use-smart-charging-in-windows">'
+            'Charge limit help</a>'
+        )
+        charge_help.setOpenExternalLinks(True)
+        charge_help.setToolTip("Charge limits are managed by your device manufacturer.")
+        health_row.addWidget(charge_help)
+        body.addLayout(health_row)
+
         self.plan_label = QLabel("Active Plan: —")
         self.plan_label.setObjectName("muted")
         body.addWidget(self.plan_label)
 
         plans = QHBoxLayout()
         plans.setSpacing(8)
-        for plan_id, label, tip in (
-            ("saver", "Power Saver", "Power Saver • brightness 35%"),
-            ("balanced", "Balanced", "Balanced • brightness 65%"),
-            ("performance", "Performance", "Performance • brightness 100%"),
-        ):
-            button = QPushButton(label)
+        for plan_id, plan in PLANS.items():
+            tip = f"Brightness {plan['brightness']}%"
+            if plan_id == "saver":
+                tip += (
+                    f"\nOn battery • CPU max {SAVER_CPU_MAX}%"
+                    f" • Screen off after {SAVER_DISPLAY_MINUTES} min"
+                    f" • Sleep after {SAVER_SLEEP_MINUTES} min idle"
+                )
+            button = QPushButton(plan["label"])
             button.setToolTip(tip)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(lambda _checked=False, pid=plan_id: self.power_requested.emit(pid))
@@ -527,6 +545,13 @@ class Dashboard(QWidget):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def set_battery_capacity(self, capacity: tuple[int, int] | None) -> None:
+        if capacity is None:
+            self.battery_health.setText("Battery health unavailable")
+            return
+        full, design = capacity
+        self.battery_health.setText(f"Battery health {full / design:.0%} • {full / 1000:.1f} / {design / 1000:.1f} Wh")
 
     def set_stats(self, stats: dict) -> None:
         cpu = float(stats.get("cpu") or 0)

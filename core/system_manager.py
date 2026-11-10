@@ -17,6 +17,15 @@ import psutil
 
 LOW_BATTERY_PERCENT = 20
 LOW_DISK_FREE_PERCENT = 5
+SAVER_CPU_MAX = 85
+SAVER_DISPLAY_MINUTES = 2
+SAVER_SLEEP_MINUTES = 3
+
+_SAVER_DC_SETTINGS = (
+    ("SUB_PROCESSOR", "PROCTHROTTLEMAX", SAVER_CPU_MAX, "CPU limit"),
+    ("SUB_VIDEO", "VIDEOIDLE", SAVER_DISPLAY_MINUTES * 60, "screen timeout"),
+    ("SUB_SLEEP", "STANDBYIDLE", SAVER_SLEEP_MINUTES * 60, "sleep timeout"),
+)
 
 PLANS: dict[str, dict[str, Any]] = {
     "saver": {
@@ -131,6 +140,19 @@ def _decode_output(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def _run_powershell(script: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            creationflags=_CREATE_NO_WINDOW,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return _decode_output(result.stdout).strip() if result.returncode == 0 else None
+
+
 class SystemManager:
     def __init__(self, schemes_path: Path | None = None) -> None:
         self.schemes_path = Path(schemes_path) if schemes_path else None
@@ -208,6 +230,24 @@ class SystemManager:
             "plugged": bool(info.power_plugged),
             "secs_left": seconds,
         }
+
+    def battery_capacity(self) -> tuple[int, int] | None:
+        """Return the full-charge and design capacities in mWh."""
+        if os.name != "nt" or self.battery() is None:
+            return None
+        output = _run_powershell(
+            "$ErrorActionPreference = 'Stop'; "
+            "$report = [Windows.Devices.Power.Battery,Windows.Devices.Power,ContentType=WindowsRuntime]"
+            "::AggregateBattery.GetReport(); "
+            "$report.FullChargeCapacityInMilliwattHours; $report.DesignCapacityInMilliwattHours"
+        )
+        if not output:
+            return None
+        try:
+            full, design = map(int, output.splitlines())
+        except ValueError:
+            return None
+        return (full, design) if full > 0 and design > 0 else None
 
     def top_processes(self, limit: int = 6) -> list[dict[str, Any]]:
         now = time.monotonic()
@@ -307,6 +347,12 @@ class SystemManager:
             # Each Windows plan stores its own display brightness and applies it on activation.
             for index in ("/setacvalueindex", "/setdcvalueindex"):
                 self._powercfg([index, guid, "SUB_VIDEO", "VIDEONORMALLEVEL", str(level)])
+            skipped = []
+            if plan_id == "saver":
+                for subgroup, setting, value, label in _SAVER_DC_SETTINGS:
+                    result = self._powercfg(["/setdcvalueindex", guid, subgroup, setting, str(value)])
+                    if result is None or result.returncode != 0:
+                        skipped.append(label)
             result = self._powercfg(["/setactive", guid])
             self._power_cache = None
             if result is None or result.returncode != 0:
@@ -316,9 +362,13 @@ class SystemManager:
                 return False, detail or "Could not change the power plan."
             applied = self.set_brightness(level)
             self.active_power_plan(refresh=True)
-        if applied is None:
-            return True, f"{plan['label']} active • Brightness control not supported on this display"
-        return True, f"{plan['label']} active • Brightness set to {applied}%"
+        detail = f"{plan['label']} active"
+        detail += f" • Brightness {applied}%" if applied is not None else " • Could not verify brightness"
+        if skipped:
+            return True, f"{detail} • Could not apply: {', '.join(skipped)}"
+        if plan_id == "saver":
+            detail += " • Battery settings applied"
+        return True, detail
 
     def set_brightness(self, level: int) -> int | None:
         if os.name != "nt":
@@ -329,22 +379,13 @@ class SystemManager:
             f"$m | Invoke-CimMethod -MethodName WmiSetBrightness -Arguments @{{Timeout=[uint32]1; Brightness=[byte]{level}}} | Out-Null; "
             "(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightness -ErrorAction Stop | Select-Object -First 1).CurrentBrightness"
         )
-        try:
-            result = subprocess.run(
-                ["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
-                capture_output=True,
-                creationflags=_CREATE_NO_WINDOW,
-                timeout=15,
-            )
-        except (OSError, subprocess.SubprocessError):
+        output = _run_powershell(script)
+        if not output:
             return None
-        if result.returncode != 0:
-            return None
-        text = _decode_output(result.stdout).strip()
         try:
-            return int(text.splitlines()[-1])
-        except (IndexError, ValueError):
-            return level
+            return int(output.splitlines()[-1])
+        except ValueError:
+            return None
 
     def pop_auto_plan(self) -> str:
         plan, self._auto_plan = self._auto_plan, ""
@@ -438,9 +479,9 @@ class SystemManager:
     def _resolve_guid(self, plan_id: str) -> str | None:
         template = PLANS[plan_id]["guid"]
         saved = self._resolved.get(plan_id, "")
-        if saved and self._guid_exists(saved):
-            return saved
         schemes = self._list_schemes()
+        if saved and any(guid == saved for guid, _name in schemes):
+            return saved
         for guid, _name in schemes:
             if guid == template:
                 return self._remember(plan_id, guid)
@@ -456,10 +497,6 @@ class SystemManager:
         if not chosen:
             return None
         return self._remember(plan_id, chosen)
-
-    def _guid_exists(self, guid: str) -> bool:
-        result = self._powercfg(["/query", guid, "SUB_VIDEO", "VIDEONORMALLEVEL"])
-        return result is not None and result.returncode == 0
 
     def _remember(self, plan_id: str, guid: str) -> str:
         self._resolved[plan_id] = guid.lower()
