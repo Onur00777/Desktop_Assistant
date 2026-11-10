@@ -9,7 +9,7 @@ from pathlib import Path
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 
-from ui.styles import ACCENT
+from ui.styles import ACCENT, BG, BORDER
 
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 NORMAL_PATH = ASSETS / "Bot-icon.png"
@@ -171,23 +171,23 @@ def paint_badge(
     happy_opacity: float = 0.0,
     cpu: float | None = None,
 ) -> None:
-    """Dark disc, neon ring and optional CPU arc, with the face clipped inside the ring."""
+    """Draw the face inside a dark badge with an optional CPU arc."""
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
-    painter.setPen(QPen(QColor(ACCENT), 2))
-    painter.setBrush(QColor(8, 14, 10, 238))
+    painter.setPen(QPen(QColor(BORDER), 1.5))
+    painter.setBrush(QColor(BG))
     painter.drawEllipse(center, radius - 1, radius - 1)
 
     ring = radius - 4.5
     if cpu is not None:
-        track = QPen(QColor(0, 255, 65, 48), 3)
+        track = QPen(QColor(BORDER), 2)
         track.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.setPen(track)
         painter.drawEllipse(center, ring, ring)
         span = -int(round(max(0.0, min(100.0, cpu)) / 100 * 360 * 16))
         if span:
-            pen = QPen(QColor(ACCENT), 3)
+            pen = QPen(QColor(ACCENT), 2)
             pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             painter.setPen(pen)
             painter.drawArc(QRectF(center.x() - ring, center.y() - ring, ring * 2, ring * 2), 90 * 16, span)

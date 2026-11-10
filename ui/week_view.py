@@ -20,8 +20,9 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.dashboard import DragHeader
+from ui.styles import MUTED
 
-DAY_NAMES = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+DAY_NAMES = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 MAX_WEEKS_AHEAD = 8
 
 WeekLoader = Callable[[date], dict[date, list[dict]]]
@@ -70,7 +71,7 @@ class WeekView(QWidget):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.setSpacing(8)
-        title = _label("WEEK SCHEDULE", "title")
+        title = _label("Week schedule", "title")
         title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.range_label = _label("", "muted")
         self.range_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
@@ -179,7 +180,7 @@ class WeekView(QWidget):
         layout.setSpacing(0)
 
         center = Qt.AlignmentFlag.AlignHCenter
-        name = _label(DAY_NAMES[day.weekday()] + ("  •  TODAY" if is_today else ""), "todayName" if is_today else "dayName", center)
+        name = _label(DAY_NAMES[day.weekday()] + (" · Today" if is_today else ""), "todayName" if is_today else "dayName", center)
         stamp = _label(_short_date(day), "todayDate" if is_today else "dayDate", center)
         if not is_today:
             name.setContentsMargins(0, 8, 0, 0)
@@ -218,9 +219,9 @@ class WeekView(QWidget):
         layout = QVBoxLayout(card)
         layout.setContentsMargins(8, 6, 8, 7)
         layout.setSpacing(2)
-        when = _label("ALL DAY" if all_day else event["start_dt"].strftime("%H:%M"), "eventTime")
+        when = _label("All day" if all_day else event["start_dt"].strftime("%H:%M"), "eventTime")
         if past:
-            when.setStyleSheet("color: #4f6656;")
+            when.setStyleSheet(f"color: {MUTED};")
         title = _label(str(event.get("title") or "Event"), "eventPast" if past else "eventTitle")
         title.setWordWrap(True)
         layout.addWidget(when)
@@ -230,6 +231,6 @@ class WeekView(QWidget):
 
     @staticmethod
     def _now_line(now: datetime) -> QLabel:
-        line = _label(f"── now {now:%H:%M} ──", "eventTime", Qt.AlignmentFlag.AlignHCenter)
+        line = _label(f"Now · {now:%H:%M}", "eventTime", Qt.AlignmentFlag.AlignHCenter)
         line.setStyleSheet("font-size: 10px;")
         return line

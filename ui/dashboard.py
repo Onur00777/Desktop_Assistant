@@ -24,14 +24,14 @@ from PyQt6.QtWidgets import (
 
 from core.system_manager import PLANS, SAVER_CPU_MAX, SAVER_DISPLAY_MINUTES, SAVER_SLEEP_MINUTES
 from core.workspace_manager import WorkspaceManager
-from ui.styles import ACTIVE_BUTTON_QSS
+from ui.styles import ACCENT, BORDER, DANGER, MUTED, TEXT, WARNING
 
 PROCESS_ROWS = 6
 IMPACT_COLORS = {
-    "Low": "#7d9a86",
-    "Medium": "#00FF41",
-    "High": "#ffb020",
-    "Very High": "#ff5a5a",
+    "Low": MUTED,
+    "Medium": TEXT,
+    "High": WARNING,
+    "Very High": DANGER,
 }
 
 
@@ -59,7 +59,7 @@ def _section(text: str) -> QLabel:
 def _hline() -> QWidget:
     line = QWidget()
     line.setFixedHeight(1)
-    line.setStyleSheet("background: #173222;")
+    line.setStyleSheet(f"background: {BORDER};")
     return line
 
 
@@ -137,14 +137,12 @@ class StatRow(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
         self.caption = QLabel(caption)
-        self.caption.setObjectName("mono")
         self.caption.setFixedWidth(64)
         self.bar = QProgressBar()
         self.bar.setRange(0, 100)
         self.bar.setTextVisible(False)
-        self.bar.setFixedHeight(10)
+        self.bar.setFixedHeight(6)
         self.value = QLabel("—")
-        self.value.setObjectName("mono")
         self.value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.value.setMinimumWidth(150)
         layout.addWidget(self.caption)
@@ -157,32 +155,30 @@ class StatRow(QWidget):
         self.value.setText(text)
         if low_is_bad:
             if value <= 15:
-                color = "#ff5a5a"
+                color = DANGER
             elif value <= 30:
-                color = "#ffb020"
+                color = WARNING
             else:
-                color = "#00FF41"
+                color = ACCENT
         elif value >= 95:
-            color = "#ff5a5a"
+            color = DANGER
         elif value >= 85:
-            color = "#ffb020"
+            color = WARNING
         else:
-            color = "#00FF41"
+            color = ACCENT
         self._paint_bar(color)
 
     def set_empty(self, text: str) -> None:
         self.bar.setValue(0)
         self.value.setText(text)
-        self._paint_bar("#1a3324")
+        self._paint_bar(BORDER)
 
     def _paint_bar(self, color: str) -> None:
         self.bar.setStyleSheet(
             "QProgressBar {"
-            " background: #08110c;"
-            " border: 1px solid #1a3324;"
-            " border-radius: 4px;"
-            " min-height: 10px;"
-            " max-height: 10px;"
+            f" background: {BORDER};"
+            " border: none;"
+            " border-radius: 3px;"
             "}"
             f"QProgressBar::chunk {{ background: {color}; border-radius: 3px; }}"
         )
@@ -224,7 +220,7 @@ class ProcessRow:
         self.power.setText(impact)
         if impact != self.impact:
             self.impact = impact
-            self.power.setStyleSheet(f"color: {IMPACT_COLORS.get(impact, '#d7ffe4')};")
+            self.power.setStyleSheet(f"color: {IMPACT_COLORS.get(impact, TEXT)};")
         protected = bool(process.get("protected"))
         self.end.setEnabled(not protected)
         self.end.setText("Sure?" if armed == name and not protected else "End")
@@ -283,7 +279,7 @@ class Dashboard(QWidget):
         header = DragHeader(self)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
-        title = QLabel("DESKTOP ASSISTANT")
+        title = QLabel("Desktop Assistant")
         title.setObjectName("title")
         title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         close_btn = QPushButton("×")
@@ -311,13 +307,18 @@ class Dashboard(QWidget):
         body.setContentsMargins(0, 0, 4, 0)
         body.setSpacing(8)
 
-        body.addWidget(_section("SYSTEM TELEMETRY"))
+        body.addWidget(_section("System overview"))
+        summary_card = QFrame()
+        summary_card.setObjectName("summaryCard")
+        summary = QVBoxLayout(summary_card)
+        summary.setContentsMargins(10, 8, 10, 8)
+        summary.setSpacing(5)
         self.cpu_row = StatRow("CPU")
         self.ram_row = StatRow("RAM")
-        self.disk_row = StatRow("DISK")
-        self.battery_row = StatRow("BATTERY")
+        self.disk_row = StatRow("Disk")
+        self.battery_row = StatRow("Battery")
         for row in (self.cpu_row, self.ram_row, self.disk_row, self.battery_row):
-            body.addWidget(row)
+            summary.addWidget(row)
 
         self.battery_health = QLabel("Battery health —")
         self.battery_health.setObjectName("muted")
@@ -326,14 +327,15 @@ class Dashboard(QWidget):
         health_row.addWidget(self.battery_health, 1)
         charge_help = QLabel(
             '<a href="https://support.microsoft.com/en-us/windows/experience/power-battery/use-smart-charging-in-windows">'
-            'Charge limit help</a>'
+            f'<span style="color: {ACCENT};">Charge limit help</span></a>'
         )
         charge_help.setOpenExternalLinks(True)
         charge_help.setToolTip("Charge limits are managed by your device manufacturer.")
         health_row.addWidget(charge_help)
-        body.addLayout(health_row)
+        summary.addLayout(health_row)
+        body.addWidget(summary_card)
 
-        self.plan_label = QLabel("Active Plan: —")
+        self.plan_label = QLabel("Power plan · —")
         self.plan_label.setObjectName("muted")
         body.addWidget(self.plan_label)
 
@@ -356,7 +358,7 @@ class Dashboard(QWidget):
         body.addLayout(plans)
         body.addWidget(_hline())
 
-        body.addWidget(_section("ACTIVE PROCESSES (TOP RESOURCE & POWER CONSUMERS)"))
+        body.addWidget(_section("Top processes"))
         process_box = QWidget()
         process_box.setObjectName("processBox")
         grid = QGridLayout(process_box)
@@ -369,10 +371,10 @@ class Dashboard(QWidget):
         grid.setColumnMinimumWidth(3, 66)
         for column, (text, align) in enumerate(
             (
-                ("PROCESS", Qt.AlignmentFlag.AlignLeft),
+                ("Process", Qt.AlignmentFlag.AlignLeft),
                 ("CPU", Qt.AlignmentFlag.AlignRight),
                 ("RAM (MB / %)", Qt.AlignmentFlag.AlignRight),
-                ("POWER", Qt.AlignmentFlag.AlignRight),
+                ("Power", Qt.AlignmentFlag.AlignRight),
                 ("", Qt.AlignmentFlag.AlignRight),
             )
         ):
@@ -384,7 +386,7 @@ class Dashboard(QWidget):
         body.addWidget(self.process_hint)
         body.addWidget(_hline())
 
-        body.addWidget(_section("WORKSPACES"))
+        body.addWidget(_section("Workspaces"))
         self.profile_layout = QVBoxLayout()
         self.profile_layout.setSpacing(6)
         body.addLayout(self.profile_layout)
@@ -435,7 +437,7 @@ class Dashboard(QWidget):
         upcoming_header = ClickArea()
         header_layout = QHBoxLayout(upcoming_header)
         header_layout.setContentsMargins(4, 2, 8, 2)
-        upcoming_title = _section("UPCOMING EVENTS  ›  WEEK VIEW")
+        upcoming_title = _section("Upcoming events  ›  Week view")
         upcoming_title.setWordWrap(False)
         header_layout.addWidget(upcoming_title)
         upcoming_header.clicked.connect(self.week_requested.emit)
@@ -580,7 +582,7 @@ class Dashboard(QWidget):
         plan = stats.get("power_plan")
         if not isinstance(plan, dict):
             return
-        self.plan_label.setText(f"Active Plan: {plan.get('label') or '—'}")
+        self.plan_label.setText(f"Power plan · {plan.get('label') or '—'}")
         plan_id = str(plan.get("id") or "")
         if plan_id != self._active_plan:
             self._active_plan = plan_id
@@ -643,7 +645,6 @@ class Dashboard(QWidget):
             else:
                 text = title
             label = QLabel(text)
-            label.setObjectName("mono")
             label.setWordWrap(True)
             self.event_layout.addWidget(label)
 
@@ -719,7 +720,6 @@ class Dashboard(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
         label = QLabel(name)
-        label.setObjectName("mono")
         label.setWordWrap(True)
         tips: list[str] = []
         for key, title in (
@@ -768,7 +768,9 @@ class Dashboard(QWidget):
         if active is None:
             active = bool(button.property("active"))
         button.setProperty("active", active)
-        button.setStyleSheet(ACTIVE_BUTTON_QSS if active else "")
+        button.style().unpolish(button)
+        button.style().polish(button)
+        button.update()
 
     @staticmethod
     def _clear(layout: QVBoxLayout) -> None:

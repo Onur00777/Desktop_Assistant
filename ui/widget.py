@@ -7,6 +7,7 @@ from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import QMenu, QWidget
 
 from ui.bot_icon import INNER_RATIO, aligned_faces, face_pixmap, paint_badge
+from ui.styles import ACCENT
 
 NORMAL = "NORMAL"
 HAPPY = "HAPPY"
@@ -109,9 +110,12 @@ class DesktopWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         center = QPointF(self.width() / 2, self.height() / 2)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(QPen(QColor(0, 255, 65, 78 if self._hover else 42), 6))
-        painter.drawEllipse(center, BADGE_RADIUS + 4, BADGE_RADIUS + 4)
+        if self._hover:
+            outline = QColor(ACCENT)
+            outline.setAlpha(110)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.setPen(QPen(outline, 1.5))
+            painter.drawEllipse(center, BADGE_RADIUS + 2, BADGE_RADIUS + 2)
         normal, happy = self._face_pixmaps()
         paint_badge(painter, center, BADGE_RADIUS, normal, happy, self.happy_opacity, self._cpu)
 

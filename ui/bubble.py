@@ -6,18 +6,18 @@ from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import QApplication, QLabel, QVBoxLayout, QWidget
 
-from ui.styles import ACCENT
+from ui.styles import ACCENT, BG, BORDER, WARNING
 
 QUOTE = "QUOTE"
 INFO = "SYSTEM INFO"
 ALERT = "SYSTEM ALERT"
 EVENT = "EVENT"
 
-_KIND_COLORS = {
-    QUOTE: "#00FF41",
-    ALERT: "#ffb020",
-    EVENT: "#8dffc1",
-    INFO: "#00FF41",
+_KIND_LABELS = {
+    QUOTE: "Quote",
+    ALERT: "System alert",
+    EVENT: "Reminder",
+    INFO: "Desktop Assistant",
 }
 
 
@@ -44,17 +44,14 @@ class SpeechBubble(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
         self.setAutoFillBackground(False)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet(
-            "QWidget#bubble { background: transparent; }"
-            "QLabel { background: transparent; color: #d7ffe4; }"
-        )
+        self.setStyleSheet("QWidget#bubble { background: transparent; }")
 
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(16, 12, 16, 24)
         self._layout.setSpacing(4)
 
-        self.kind_label = QLabel(INFO)
-        kind_font = QFont("Consolas", 9)
+        self.kind_label = QLabel(_KIND_LABELS[INFO])
+        kind_font = QFont("Segoe UI", 9)
         kind_font.setBold(True)
         self.kind_label.setFont(kind_font)
         self.body = QLabel("")
@@ -133,13 +130,12 @@ class SpeechBubble(QWidget):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(0, 0, 0, 85))
         painter.drawRoundedRect(body.translated(0, 3), 12, 12)
-        painter.setPen(QPen(QColor(ACCENT), 1.4))
-        painter.setBrush(QColor(12, 18, 14, 244))
+        painter.setPen(QPen(QColor(BORDER), 1))
+        painter.setBrush(QColor(BG))
         painter.drawRoundedRect(body, 12, 12)
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(12, 18, 14, 244))
         painter.drawPolygon(tail)
-        painter.setPen(QPen(QColor(ACCENT), 1.4))
+        painter.setPen(QPen(QColor(BORDER), 1))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPolyline(tail)
 
@@ -177,11 +173,9 @@ class SpeechBubble(QWidget):
         self.hide()
 
     def _apply_kind(self, kind: str) -> None:
-        color = _KIND_COLORS.get(kind, ACCENT)
-        self.kind_label.setText(kind)
-        self.kind_label.setStyleSheet(
-            f"color: {color}; background: transparent; font-weight: 700; letter-spacing: 1px;"
-        )
+        color = WARNING if kind == ALERT else ACCENT
+        self.kind_label.setText(_KIND_LABELS.get(kind, kind))
+        self.kind_label.setStyleSheet(f"color: {color};")
 
     def _set_tail(self, tail: str) -> None:
         self._tail = tail
